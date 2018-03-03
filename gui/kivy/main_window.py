@@ -82,6 +82,10 @@ class ElectrumWindow(App):
     server_port = StringProperty('')
     num_chains = NumericProperty(0)
     blockchain_name = StringProperty('')
+    fee_status = StringProperty('Fee')
+    balance = StringProperty('')
+    fiat_balance = StringProperty('')
+    is_fiat = BooleanProperty(False)
     blockchain_checkpoint = NumericProperty(0)
 
     auto_connect = BooleanProperty(False)
@@ -271,6 +275,7 @@ class ElectrumWindow(App):
         # cached dialogs
         self._settings_dialog = None
         self._password_dialog = None
+        self.fee_status = self.electrum_config.get_fee_status()
 
     def wallet_name(self):
         return os.path.basename(self.wallet.storage.path) if self.wallet else ' '
@@ -457,6 +462,7 @@ class ElectrumWindow(App):
         if self.network:
             interests = ['updated', 'status', 'new_transaction', 'verified', 'interfaces']
             self.network.register_callback(self.on_network_event, interests)
+            self.network.register_callback(self.on_fee, ['fee'])
             self.network.register_callback(self.on_quotes, ['on_quotes'])
             self.network.register_callback(self.on_history, ['on_history'])
         # URI passed in config
@@ -631,17 +637,17 @@ class ElectrumWindow(App):
             if not self.wallet.up_to_date or server_height == 0:
                 status = _("Synchronizing...")
             elif server_lag > 1:
-                status = _("Server lagging ({} blocks)").format(server_lag)
+                status = _("Server lagging")
             else:
-                c, u, x = self.wallet.get_balance()
-                text = self.format_amount(c+x+u)
-                status = str(text.strip() + ' ' + self.base_unit)
+                status = ''
         else:
             status = _("Disconnected")
-
-        n = self.wallet.basename()
-        self.status = '[size=15dp]%s[/size]\n%s' %(n, status)
-        #fiat_balance = self.fx.format_amount_and_units(c+u+x) or ''
+        self.status = self.wallet.basename() + (' [size=15dp](%s)[/size]'%status if status else '')
+        # balance
+        c, u, x = self.wallet.get_balance()
+        text = self.format_amount(c+x+u)
+        self.balance = str(text.strip()) + ' [size=22dp]%s[/size]'% self.base_unit
+        self.fiat_balance = self.fx.format_amount(c+u+x) + ' [size=22dp]%s[/size]'% self.fx.ccy
 
     def get_max_amount(self):
         inputs = self.wallet.get_spendable_coins(None, self.electrum_config)
@@ -684,9 +690,6 @@ class ElectrumWindow(App):
     def on_resume(self):
         if self.nfcscanner:
             self.nfcscanner.nfc_enable()
-        # workaround p4a bug:
-        # show an empty info bubble, to refresh the display
-        self.show_info_bubble('', duration=0.1, pos=(0,0), width=1, arrow_pos=None)
 
     def on_size(self, instance, value):
         width, height = value
@@ -830,6 +833,16 @@ class ElectrumWindow(App):
             screen.amount = amount
         popup = AmountDialog(show_max, amount, cb)
         popup.open()
+
+    def fee_dialog(self, label, dt):
+        from .uix.dialogs.fee_dialog import FeeDialog
+        def cb():
+            self.fee_status = self.electrum_config.get_fee_status()
+        fee_dialog = FeeDialog(self, self.electrum_config, cb)
+        fee_dialog.open()
+
+    def on_fee(self, event, *arg):
+        self.fee_status = self.electrum_config.get_fee_status()
 
     def protected(self, msg, f, args):
         if self.wallet.has_password():

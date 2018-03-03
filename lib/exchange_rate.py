@@ -451,6 +451,12 @@ class FxThread(ThreadJob):
     def set_history_config(self, b):
         self.config.set_key('history_rates', bool(b))
 
+    def get_history_capital_gains_config(self):
+        return bool(self.config.get('history_rates_capital_gains', False))
+
+    def set_history_capital_gains_config(self, b):
+        self.config.set_key('history_rates_capital_gains', bool(b))
+
     def get_fiat_address_config(self):
         return bool(self.config.get('fiat_address'))
 
@@ -499,6 +505,10 @@ class FxThread(ThreadJob):
             return Decimal('NaN')
         return Decimal(rate)
 
+    def format_amount(self, btc_balance):
+        rate = self.exchange_rate()
+        return '' if rate.is_nan() else "%s" % self.value_str(btc_balance, rate)
+
     def format_amount_and_units(self, btc_balance):
         rate = self.exchange_rate()
         return '' if rate.is_nan() else "%s %s" % (self.value_str(btc_balance, rate), self.ccy)
@@ -520,6 +530,8 @@ class FxThread(ThreadJob):
         return "%s" % (self.ccy_amount_str(value, True))
 
     def history_rate(self, d_t):
+        if d_t is None:
+            return Decimal('NaN')
         rate = self.exchange.historical_rate(self.ccy, d_t)
         # Frequently there is no rate for today, until tomorrow :)
         # Use spot quotes in that case
